@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::error::AppError;
-use crate::model::{CompressionOptions, UploadResponse};
+use crate::model::{CompressionOptions, QualityPreset, UploadResponse};
 
 pub struct UploadedFile {
     pub task_id: Uuid,
@@ -24,11 +24,100 @@ fn get_extension(filename: &str) -> Option<String> {
         .map(|s| s.to_lowercase())
 }
 
+struct PendingFields {
+    preset: Option<String>,
+    quality: Option<String>,
+    target_vertex_count: Option<String>,
+    target_face_count: Option<String>,
+    preserve_borders: Option<String>,
+    preserve_uvs: Option<String>,
+    curvature_aware: Option<String>,
+    curvature_weight: Option<String>,
+    preserve_features: Option<String>,
+    feature_threshold: Option<String>,
+    adaptive_sampling: Option<String>,
+    min_quality_region: Option<String>,
+}
+
+impl PendingFields {
+    fn new() -> Self {
+        Self {
+            preset: None,
+            quality: None,
+            target_vertex_count: None,
+            target_face_count: None,
+            preserve_borders: None,
+            preserve_uvs: None,
+            curvature_aware: None,
+            curvature_weight: None,
+            preserve_features: None,
+            feature_threshold: None,
+            adaptive_sampling: None,
+            min_quality_region: None,
+        }
+    }
+}
+
+fn apply_pending_fields(options: &mut CompressionOptions, pending: PendingFields) {
+    if let Some(preset_str) = pending.preset {
+        if let Some(preset) = QualityPreset::from_str(&preset_str) {
+            options.apply_preset(preset);
+        }
+    }
+
+    if let Some(v) = pending.quality {
+        if let Ok(q) = v.parse::<f32>() {
+            options.quality = q.clamp(0.01, 1.0);
+        }
+    }
+    if let Some(v) = pending.target_vertex_count {
+        if let Ok(n) = v.parse::<usize>() {
+            options.target_vertex_count = Some(n);
+        }
+    }
+    if let Some(v) = pending.target_face_count {
+        if let Ok(n) = v.parse::<usize>() {
+            options.target_face_count = Some(n);
+        }
+    }
+    if let Some(v) = pending.preserve_borders {
+        options.preserve_borders = v != "false" && v != "0";
+    }
+    if let Some(v) = pending.preserve_uvs {
+        options.preserve_uvs = v != "false" && v != "0";
+    }
+    if let Some(v) = pending.curvature_aware {
+        options.curvature_aware = v != "false" && v != "0";
+    }
+    if let Some(v) = pending.curvature_weight {
+        if let Ok(n) = v.parse::<f32>() {
+            options.curvature_weight = n.clamp(0.0, 10.0);
+        }
+    }
+    if let Some(v) = pending.preserve_features {
+        options.preserve_features = v != "false" && v != "0";
+    }
+    if let Some(v) = pending.feature_threshold {
+        if let Ok(n) = v.parse::<f32>() {
+            options.feature_threshold = n.clamp(0.0, 1.0);
+        }
+    }
+    if let Some(v) = pending.adaptive_sampling {
+        options.adaptive_sampling = v != "false" && v != "0";
+    }
+    if let Some(v) = pending.min_quality_region {
+        if let Ok(n) = v.parse::<f32>() {
+            options.min_quality_region = n.clamp(0.0, 1.0);
+        }
+    }
+}
+
 pub async fn handle_upload(
     config: &AppConfig,
     mut multipart: Multipart,
 ) -> Result<UploadResponse, AppError> {
     let mut uploaded_file: Option<UploadedFile> = None;
+    let mut pending = PendingFields::new();
     let mut options: CompressionOptions = CompressionOptions::default();
     let task_id = Uuid::new_v4();
 
@@ -68,13 +157,12 @@ pub async fn handle_upload(
                     .await
                     .map_err(AppError::Io)?;
 
-                let mut total_bytes: u64 = 0;
                 let data = field
                     .bytes()
                     .await
                     .map_err(|e| AppError::InvalidMultipart(e.to_string()))?;
 
-                total_bytes += data.len() as u64;
+                let total_bytes = data.len() as u64;
 
                 if total_bytes > max_bytes as u64 {
                     let _ = tokio::fs::remove_file(&stored_path).await;
@@ -97,61 +185,41 @@ pub async fn handle_upload(
                     options: options.clone(),
                 });
             }
+            "preset" => {
+                pending.preset = Some(field.text().await.unwrap_or_default());
+            }
             "quality" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(q) = value.parse::<f32>() {
-                    options.quality = q.clamp(0.01, 1.0);
-                }
+                pending.quality = Some(field.text().await.unwrap_or_default());
             }
             "target_vertex_count" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(v) = value.parse::<usize>() {
-                    options.target_vertex_count = Some(v);
-                }
+                pending.target_vertex_count = Some(field.text().await.unwrap_or_default());
             }
             "target_face_count" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(v) = value.parse::<usize>() {
-                    options.target_face_count = Some(v);
-                }
+                pending.target_face_count = Some(field.text().await.unwrap_or_default());
             }
             "preserve_borders" => {
-                let value = field.text().await.unwrap_or_default();
-                options.preserve_borders = value != "false" && value != "0";
+                pending.preserve_borders = Some(field.text().await.unwrap_or_default());
             }
             "preserve_uvs" => {
-                let value = field.text().await.unwrap_or_default();
-                options.preserve_uvs = value != "false" && value != "0";
+                pending.preserve_uvs = Some(field.text().await.unwrap_or_default());
             }
             "curvature_aware" => {
-                let value = field.text().await.unwrap_or_default();
-                options.curvature_aware = value != "false" && value != "0";
+                pending.curvature_aware = Some(field.text().await.unwrap_or_default());
             }
             "curvature_weight" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(v) = value.parse::<f32>() {
-                    options.curvature_weight = v.clamp(0.0, 10.0);
-                }
+                pending.curvature_weight = Some(field.text().await.unwrap_or_default());
             }
             "preserve_features" => {
-                let value = field.text().await.unwrap_or_default();
-                options.preserve_features = value != "false" && value != "0";
+                pending.preserve_features = Some(field.text().await.unwrap_or_default());
             }
             "feature_threshold" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(v) = value.parse::<f32>() {
-                    options.feature_threshold = v.clamp(0.0, 1.0);
-                }
+                pending.feature_threshold = Some(field.text().await.unwrap_or_default());
             }
             "adaptive_sampling" => {
-                let value = field.text().await.unwrap_or_default();
-                options.adaptive_sampling = value != "false" && value != "0";
+                pending.adaptive_sampling = Some(field.text().await.unwrap_or_default());
             }
             "min_quality_region" => {
-                let value = field.text().await.unwrap_or_default();
-                if let Ok(v) = value.parse::<f32>() {
-                    options.min_quality_region = v.clamp(0.0, 1.0);
-                }
+                pending.min_quality_region = Some(field.text().await.unwrap_or_default());
             }
             _ => {
                 let _ = field.text().await;
@@ -159,9 +227,12 @@ pub async fn handle_upload(
         }
     }
 
-    let uploaded = uploaded_file.ok_or_else(|| {
+    apply_pending_fields(&mut options, pending);
+
+    let mut uploaded = uploaded_file.ok_or_else(|| {
         AppError::InvalidMultipart("No file field found in multipart request".into())
     })?;
+    uploaded.options = options.clone();
 
     Ok(UploadResponse {
         task_id: uploaded.task_id,

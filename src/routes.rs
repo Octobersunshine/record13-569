@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::config::AppConfig;
 use crate::error::AppError;
-use crate::model::{HealthResponse, TaskListResponse, TaskStatusResponse, UploadResponse};
+use crate::model::{HealthResponse, PresetInfo, TaskListResponse, TaskStatusResponse, UploadResponse};
 use crate::task::TaskManager;
 use crate::uploader;
 
@@ -51,6 +51,7 @@ async fn health_handler(State(state): SharedState) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok".to_string(),
         uptime_seconds: uptime.num_seconds() as u64,
+        presets: PresetInfo::all(),
     })
 }
 
