@@ -1,0 +1,10 @@
+E:\temp\record13\569\target\debug\deps\float_cmp-4ddc9c6752ba2839.d: D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\lib.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\macros.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps_eq.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\eq.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ratio.rs
+
+E:\temp\record13\569\target\debug\deps\libfloat_cmp-4ddc9c6752ba2839.rmeta: D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\lib.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\macros.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps_eq.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\eq.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ratio.rs
+
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\lib.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\macros.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ulps_eq.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\eq.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\float-cmp-0.9.0\src\ratio.rs:

@@ -1,0 +1,23 @@
+[package]
+name = "model-compressor"
+version = "0.1.0"
+edition = "2021"
+description = "3D Model Upload and Mesh Simplification Service using Axum"
+
+[dependencies]
+axum = { version = "0.7", features = ["multipart"] }
+tokio = { version = "1.35", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.7", features = ["v4", "serde"] }
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+anyhow = "1.0"
+futures = "0.3"
+tempfile = "3.9"
+tobj = "4.0"
+stl_io = "0.7"

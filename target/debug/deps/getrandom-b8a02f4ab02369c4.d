@@ -1,0 +1,10 @@
+E:\temp\record13\569\target\debug\deps\getrandom-b8a02f4ab02369c4.d: D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\lib.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\error.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\util.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\../README.md D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends\windows.rs
+
+E:\temp\record13\569\target\debug\deps\libgetrandom-b8a02f4ab02369c4.rmeta: D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\lib.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\error.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\util.rs D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\../README.md D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends\windows.rs
+
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\lib.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\error.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\util.rs:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\../README.md:
+D:\ProgramFiles\Rust\cargo_home\registry\src\index.crates.io-1949cf8c6b5b557f\getrandom-0.3.4\src\backends\windows.rs:
