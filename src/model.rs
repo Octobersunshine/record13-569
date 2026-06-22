@@ -25,6 +25,12 @@ pub struct CompressionOptions {
     pub target_face_count: Option<usize>,
     pub preserve_borders: bool,
     pub preserve_uvs: bool,
+    pub curvature_aware: bool,
+    pub curvature_weight: f32,
+    pub preserve_features: bool,
+    pub feature_threshold: f32,
+    pub adaptive_sampling: bool,
+    pub min_quality_region: f32,
 }
 
 impl Default for CompressionOptions {
@@ -35,6 +41,12 @@ impl Default for CompressionOptions {
             target_face_count: None,
             preserve_borders: true,
             preserve_uvs: true,
+            curvature_aware: true,
+            curvature_weight: 2.0,
+            preserve_features: true,
+            feature_threshold: 0.5,
+            adaptive_sampling: true,
+            min_quality_region: 0.8,
         }
     }
 }

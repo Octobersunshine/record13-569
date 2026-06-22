@@ -127,6 +127,7 @@ impl TaskManager {
                 output_path: _,
                 original_info,
                 compressed_info,
+                curvature_stats: _,
             }) => {
                 let mut tasks = self.tasks.write().await;
                 if let Some(task) = tasks.get_mut(&task_id) {

@@ -2,6 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::path::PathBuf;
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::AppError;
 use crate::model::{CompressionOptions, MeshInfo};
 
@@ -10,6 +12,16 @@ pub struct CompressionResult {
     pub output_path: PathBuf,
     pub original_info: MeshInfo,
     pub compressed_info: MeshInfo,
+    pub curvature_stats: Option<CurvatureStats>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CurvatureStats {
+    pub min_curvature: f32,
+    pub max_curvature: f32,
+    pub mean_curvature: f32,
+    pub median_curvature: f32,
+    pub high_curvature_ratio: f32,
 }
 
 #[derive(Debug, Clone)]
@@ -219,16 +231,16 @@ impl Compressor {
 
         progress_callback(0.25);
 
-        let simplified = if target_faces >= orig_fcount {
-            raw_mesh.clone()
+        let (simplified, curvature_stats) = if target_faces >= orig_fcount {
+            (raw_mesh.clone(), None)
         } else {
-            Self::simplify_mesh_qem(
+            let result = Self::simplify_mesh_gradient_aware(
                 &raw_mesh,
                 target_faces,
-                options.preserve_borders,
-                options.preserve_uvs,
+                options,
                 &progress_callback,
-            )?
+            )?;
+            result
         };
 
         progress_callback(0.9);
@@ -260,17 +272,17 @@ impl Compressor {
             output_path: output_path.clone(),
             original_info,
             compressed_info,
+            curvature_stats,
         })
     }
 
-    fn simplify_mesh_qem(
+    fn simplify_mesh_gradient_aware(
         mesh: &RawMesh,
         target_faces: usize,
-        preserve_borders: bool,
-        preserve_uvs: bool,
+        options: &CompressionOptions,
         progress: &impl Fn(f32),
-    ) -> Result<RawMesh, AppError> {
-        let _ = preserve_uvs;
+    ) -> Result<(RawMesh, Option<CurvatureStats>), AppError> {
+        let _ = options.preserve_uvs;
 
         let mut verts: Vec<[f64; 3]> = mesh
             .vertices
@@ -287,7 +299,7 @@ impl Compressor {
         let num_faces = faces.len();
 
         if num_faces <= target_faces || num_verts < 4 {
-            return Ok(mesh.clone());
+            return Ok((mesh.clone(), None));
         }
 
         progress(0.3);
@@ -295,7 +307,39 @@ impl Compressor {
         let vertex_faces = Self::build_vertex_face_map(num_verts, &faces);
         let border_vertices = Self::detect_borders(num_verts, &faces, &vertex_faces);
 
-        progress(0.35);
+        progress(0.32);
+
+        let face_normals = Self::compute_face_normals(&verts, &faces);
+
+        progress(0.34);
+
+        let (curvature, curvature_stats) = if options.curvature_aware || options.preserve_features {
+            let c = Self::compute_vertex_curvatures(
+                num_verts,
+                &verts,
+                &faces,
+                &vertex_faces,
+                &face_normals,
+            );
+            let stats = Self::compute_curvature_stats(&c);
+            (c, Some(stats))
+        } else {
+            (vec![0.0; num_verts], None)
+        };
+
+        progress(0.37);
+
+        let vertex_importance = Self::compute_vertex_importance(
+            num_verts,
+            &curvature,
+            &border_vertices,
+            &mesh.normals,
+            &vertex_faces,
+            &faces,
+            options,
+        );
+
+        progress(0.4);
 
         let mut quadrics: Vec<Matrix4> = (0..num_verts).map(|_| Matrix4::zero()).collect();
 
@@ -310,7 +354,20 @@ impl Compressor {
             quadrics[face[2]].accumulate(&q);
         }
 
-        progress(0.4);
+        progress(0.43);
+
+        let adaptive_weights = if options.adaptive_sampling {
+            Self::compute_adaptive_edge_weights(
+                num_verts,
+                &vertex_importance,
+                &curvature,
+                options,
+            )
+        } else {
+            vec![1.0; num_verts]
+        };
+
+        progress(0.46);
 
         let mut edges: Vec<Edge> = Vec::new();
         let mut edge_set: HashSet<(usize, usize)> = HashSet::new();
@@ -323,7 +380,7 @@ impl Compressor {
                 if !edge_set.contains(&key) {
                     edge_set.insert(key);
 
-                    if preserve_borders
+                    if options.preserve_borders
                         && (border_vertices.contains(&a) || border_vertices.contains(&b))
                     {
                         let is_boundary_edge = {
@@ -338,14 +395,48 @@ impl Compressor {
                         }
                     }
 
-                    let cost =
+                    let base_cost =
                         Self::compute_edge_error(&verts[a], &verts[b], &quadrics[a], &quadrics[b]);
-                    edges.push(Edge { a, b, cost });
+
+                    let importance_a = vertex_importance[a];
+                    let importance_b = vertex_importance[b];
+                    let weight_a = adaptive_weights[a];
+                    let weight_b = adaptive_weights[b];
+
+                    let avg_importance = (importance_a + importance_b) * 0.5;
+                    let avg_weight = (weight_a + weight_b) * 0.5;
+
+                    let adjusted_cost = if avg_importance > 0.0 {
+                        base_cost / (avg_importance * avg_weight + 1e-8)
+                    } else {
+                        base_cost
+                    };
+
+                    let feature_penalty = if options.preserve_features {
+                        let threshold = options.feature_threshold as f64;
+                        if importance_a > threshold || importance_b > threshold {
+                            let penalty = ((importance_a - threshold).max(0.0)
+                                + (importance_b - threshold).max(0.0))
+                                * 100.0;
+                            adjusted_cost + penalty
+                        } else {
+                            adjusted_cost
+                        }
+                    } else {
+                        adjusted_cost
+                    };
+
+                    edges.push(Edge {
+                        a,
+                        b,
+                        cost: feature_penalty,
+                        importance: avg_importance,
+                    });
                 }
             }
         }
 
-        progress(0.45);
+        progress(0.5);
 
         edges.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap_or(std::cmp::Ordering::Equal));
 
@@ -357,6 +448,10 @@ impl Compressor {
         let mut collapsed_edges = 0usize;
         let total_edges_to_collapse = (num_faces - target_faces).max(1);
 
+        let mut min_importance_allowed = 0.0;
+        let quality_step = (1.0 - options.min_quality_region as f64)
+            / total_edges_to_collapse.max(1) as f64;
+
         for edge in edges.iter() {
             if current_faces <= target_faces {
                 break;
@@ -367,6 +462,11 @@ impl Compressor {
                 continue;
             }
             if remap[a] != a || remap[b] != b {
+                continue;
+            }
+
+            if options.adaptive_sampling && edge.importance > (1.0 - min_importance_allowed) {
+                min_importance_allowed += quality_step;
                 continue;
             }
 
@@ -426,8 +526,8 @@ impl Compressor {
 
             collapsed_edges += 1;
             if collapsed_edges % 1000 == 0 {
-                let p = 0.45
-                    + (collapsed_edges as f32 / total_edges_to_collapse as f32) * 0.40;
+                let p = 0.5
+                    + (collapsed_edges as f32 / total_edges_to_collapse as f32) * 0.38;
                 progress(p.min(0.88));
             }
         }
@@ -442,8 +542,7 @@ impl Compressor {
         for i in 0..num_verts {
             if alive_vert[i] && remap[i] == i {
                 new_index[i] = count;
-                new_verts
-                    .push([verts[i][0] as f32, verts[i][1] as f32, verts[i][2] as f32]);
+                new_verts.push([verts[i][0] as f32, verts[i][1] as f32, verts[i][2] as f32]);
                 if i < mesh.normals.len() {
                     new_normals.push(mesh.normals[i]);
                 } else {
@@ -472,12 +571,244 @@ impl Compressor {
 
         progress(0.89);
 
-        Ok(RawMesh {
-            vertices: new_verts,
-            normals: new_normals,
-            uvs: new_uvs,
-            faces: new_faces,
-        })
+        Ok((
+            RawMesh {
+                vertices: new_verts,
+                normals: new_normals,
+                uvs: new_uvs,
+                faces: new_faces,
+            },
+            curvature_stats,
+        ))
+    }
+
+    fn compute_face_normals(
+        verts: &[[f64; 3]],
+        faces: &[[usize; 3]],
+    ) -> Vec<[f64; 3]> {
+        faces
+            .iter()
+            .map(|f| {
+                let v0 = &verts[f[0]];
+                let v1 = &verts[f[1]];
+                let v2 = &verts[f[2]];
+                let e1 = [v1[0] - v0[0], v1[1] - v0[1], v1[2] - v0[2]];
+                let e2 = [v2[0] - v0[0], v2[1] - v0[1], v2[2] - v0[2]];
+                let n = [
+                    e1[1] * e2[2] - e1[2] * e2[1],
+                    e1[2] * e2[0] - e1[0] * e2[2],
+                    e1[0] * e2[1] - e1[1] * e2[0],
+                ];
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+                if len > 1e-12 {
+                    [n[0] / len, n[1] / len, n[2] / len]
+                } else {
+                    [0.0, 0.0, 0.0]
+                }
+            })
+            .collect()
+    }
+
+    fn compute_vertex_curvatures(
+        num_verts: usize,
+        verts: &[[f64; 3]],
+        faces: &[[usize; 3]],
+        vertex_faces: &HashMap<usize, Vec<usize>>,
+        face_normals: &[[f64; 3]],
+    ) -> Vec<f64> {
+        let mut curvatures = vec![0.0f64; num_verts];
+
+        for (vi, fi_list) in vertex_faces.iter() {
+            let vi = *vi;
+            let v_pos = &verts[vi];
+
+            let mut normal_dispersion = 0.0f64;
+            let mut face_count = 0usize;
+            let mut avg_normal = [0.0f64; 3];
+
+            for &fi in fi_list.iter() {
+                let n = face_normals[fi];
+                avg_normal[0] += n[0];
+                avg_normal[1] += n[1];
+                avg_normal[2] += n[2];
+                face_count += 1;
+            }
+
+            if face_count < 2 {
+                curvatures[vi] = 0.0;
+                continue;
+            }
+
+            let len = (avg_normal[0] * avg_normal[0]
+                + avg_normal[1] * avg_normal[1]
+                + avg_normal[2] * avg_normal[2])
+                .sqrt();
+            if len > 1e-12 {
+                avg_normal[0] /= len;
+                avg_normal[1] /= len;
+                avg_normal[2] /= len;
+            }
+
+            let mut max_dot = -1.0f64;
+            for &fi in fi_list.iter() {
+                let n = face_normals[fi];
+                let dot = n[0] * avg_normal[0] + n[1] * avg_normal[1] + n[2] * avg_normal[2];
+                let dot = dot.clamp(-1.0, 1.0);
+                let angle = dot.acos();
+                normal_dispersion += angle;
+                if dot < max_dot {
+                    max_dot = dot;
+                }
+            }
+            normal_dispersion /= face_count as f64;
+
+            let mut spatial_variation = 0.0f64;
+            for &fi in fi_list.iter() {
+                let f = faces[fi];
+                let other_v = if f[0] == vi {
+                    &verts[f[1]]
+                } else if f[1] == vi {
+                    &verts[f[2]]
+                } else {
+                    &verts[f[0]]
+                };
+                let dx = other_v[0] - v_pos[0];
+                let dy = other_v[1] - v_pos[1];
+                let dz = other_v[2] - v_pos[2];
+                let dist = (dx * dx + dy * dy + dz * dz).sqrt();
+                if dist > 1e-12 {
+                    let n = face_normals[fi];
+                    let plane_dist = (dx * n[0] + dy * n[1] + dz * n[2]).abs();
+                    spatial_variation += plane_dist / dist;
+                }
+            }
+            spatial_variation /= face_count.max(1) as f64;
+
+            let curvature = normal_dispersion * 0.6 + spatial_variation * 0.4;
+            curvatures[vi] = curvature;
+        }
+
+        let mut sorted_curve = curvatures.clone();
+        sorted_curve.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let _median = sorted_curve[num_verts / 2];
+        let max_c = *sorted_curve.last().unwrap_or(&1.0);
+        let min_c = *sorted_curve.first().unwrap_or(&0.0);
+        let range = (max_c - min_c).max(1e-12);
+
+        curvatures
+            .iter()
+            .map(|&c| ((c - min_c) / range).clamp(0.0, 1.0))
+            .collect()
+    }
+
+    fn compute_curvature_stats(curvature: &[f64]) -> CurvatureStats {
+        let mut sorted = curvature.to_vec();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+
+        let min_c = *sorted.first().unwrap_or(&0.0);
+        let max_c = *sorted.last().unwrap_or(&0.0);
+        let mean = sorted.iter().sum::<f64>() / sorted.len().max(1) as f64;
+        let median = sorted[sorted.len() / 2];
+        let high_ratio = sorted.iter().filter(|&&c| c > 0.5).count() as f64
+            / sorted.len().max(1) as f64;
+
+        CurvatureStats {
+            min_curvature: min_c as f32,
+            max_curvature: max_c as f32,
+            mean_curvature: mean as f32,
+            median_curvature: median as f32,
+            high_curvature_ratio: high_ratio as f32,
+        }
+    }
+
+    fn compute_vertex_importance(
+        num_verts: usize,
+        curvature: &[f64],
+        border_vertices: &HashSet<usize>,
+        normals: &[[f32; 3]],
+        vertex_faces: &HashMap<usize, Vec<usize>>,
+        faces: &[[usize; 3]],
+        options: &CompressionOptions,
+    ) -> Vec<f64> {
+        let mut importance = vec![0.0f64; num_verts];
+
+        for vi in 0..num_verts {
+            let mut score = 0.0f64;
+
+            if options.curvature_aware {
+                let curv_score = curvature[vi] * options.curvature_weight as f64;
+                score += curv_score * 0.5;
+            }
+
+            if options.preserve_borders && border_vertices.contains(&vi) {
+                score += 0.3;
+            }
+
+            if options.preserve_uvs {
+                if let Some(fi_list) = vertex_faces.get(&vi) {
+                    let mut normal_variance = 0.0f64;
+                    let mut count = 0usize;
+                    for &fi in fi_list.iter() {
+                        for j in 0..3 {
+                            let idx = faces[fi][j];
+                            if idx < normals.len() {
+                                let n = normals[idx];
+                                let n_len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]) as f64;
+                                if n_len > 1e-6 {
+                                    normal_variance += 1.0;
+                                }
+                            }
+                            count += 1;
+                        }
+                    }
+                    if count > 0 {
+                        score += (normal_variance / count as f64) * 0.1;
+                    }
+                }
+            }
+
+            if options.preserve_features {
+                let t = options.feature_threshold as f64;
+                if curvature[vi] > t {
+                    score += (curvature[vi] - t) * 2.0;
+                }
+            }
+
+            importance[vi] = score.clamp(0.0, 1.0);
+        }
+
+        importance
+    }
+
+    fn compute_adaptive_edge_weights(
+        num_verts: usize,
+        importance: &[f64],
+        curvature: &[f64],
+        options: &CompressionOptions,
+    ) -> Vec<f64> {
+        let mut weights = vec![1.0f64; num_verts];
+        let min_q = options.min_quality_region as f64;
+
+        for vi in 0..num_verts {
+            let imp = importance[vi];
+            let curv = curvature[vi];
+
+            let weight = if curv > 0.7 {
+                min_q.max(0.9)
+            } else if curv > 0.5 {
+                min_q.max(0.7)
+            } else if curv > 0.3 {
+                min_q.max(0.5)
+            } else if curv > 0.1 {
+                min_q.max(0.3)
+            } else {
+                min_q
+            };
+
+            weights[vi] = weight + imp * 0.5;
+        }
+
+        weights
     }
 
     fn build_vertex_face_map(
@@ -681,6 +1012,7 @@ struct Edge {
     a: usize,
     b: usize,
     cost: f64,
+    importance: f64,
 }
 
 #[derive(Debug, Clone, Copy)]

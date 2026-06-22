@@ -123,6 +123,36 @@ pub async fn handle_upload(
                 let value = field.text().await.unwrap_or_default();
                 options.preserve_uvs = value != "false" && value != "0";
             }
+            "curvature_aware" => {
+                let value = field.text().await.unwrap_or_default();
+                options.curvature_aware = value != "false" && value != "0";
+            }
+            "curvature_weight" => {
+                let value = field.text().await.unwrap_or_default();
+                if let Ok(v) = value.parse::<f32>() {
+                    options.curvature_weight = v.clamp(0.0, 10.0);
+                }
+            }
+            "preserve_features" => {
+                let value = field.text().await.unwrap_or_default();
+                options.preserve_features = value != "false" && value != "0";
+            }
+            "feature_threshold" => {
+                let value = field.text().await.unwrap_or_default();
+                if let Ok(v) = value.parse::<f32>() {
+                    options.feature_threshold = v.clamp(0.0, 1.0);
+                }
+            }
+            "adaptive_sampling" => {
+                let value = field.text().await.unwrap_or_default();
+                options.adaptive_sampling = value != "false" && value != "0";
+            }
+            "min_quality_region" => {
+                let value = field.text().await.unwrap_or_default();
+                if let Ok(v) = value.parse::<f32>() {
+                    options.min_quality_region = v.clamp(0.0, 1.0);
+                }
+            }
             _ => {
                 let _ = field.text().await;
             }
